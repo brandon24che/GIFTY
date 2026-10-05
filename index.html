@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GIF Forge — Video to GIF &amp; Frame Extractor</title>
+<meta name="description" content="Convert videos to animated GIFs and extract frames from videos or GIFs. 100% client-side, your files never leave your device.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23fbbf24'/%3E%3Cstop offset='.52' stop-color='%23f97316'/%3E%3Cstop offset='1' stop-color='%23fb7185'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cpath d='M12 10l10 6-10 6z' fill='%23201605'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script>
+  /* Applied before first paint so the saved theme never flashes. */
+  (function () {
+    var theme = 'dark';
+    try {
+      var saved = localStorage.getItem('gf-theme');
+      theme = saved === 'light' || saved === 'dark' ? saved
+        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    } catch (e) { /* storage blocked — fall back to dark */ }
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+
+<!-- Open-source libraries (loaded from CDN, no paid services, no data leaves the device) -->
+<script src="https://cdn.jsdelivr.net/npm/omggif@1.0.10/omggif.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+</head>
+<body>
+
+<div class="bg-orbs" aria-hidden="true">
+  <span class="orb orb-1"></span>
+  <span class="orb orb-2"></span>
+  <span class="orb orb-3"></span>
+  <span class="grid-veil"></span>
+</div>
+
+<div id="lib-banner" class="lib-banner" hidden>
+  <div class="lib-banner-inner">
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 2L1 21h22L12 2zm0 5l7.5 13h-15L12 7zm-1 4v4h2v-4h-2zm0 5v2h2v-2h-2z"/></svg>
+    <p id="lib-banner-text">Some open-source libraries could not be loaded. Check your internet connection and reload.</p>
+    <button type="button" class="btn btn-ghost btn-sm" id="lib-retry">Retry</button>
+  </div>
+</div>
+
+<header class="app-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="#" aria-label="GIF Forge home">
+      <span class="brand-mark">
+        <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
+          <rect x="3" y="6" width="26" height="20" rx="5" fill="none" stroke="currentColor" stroke-width="2.2"/>
+          <path d="M13.5 12.2l7 3.8-7 3.8z" fill="currentColor"/>
+        </svg>
+      </span>
+      <span class="brand-text">
+        <strong>GIF&nbsp;Forge</strong>
+        <small>video&nbsp;→&nbsp;gif · frame&nbsp;extraction</small>
+      </span>
+    </a>
+
+    <div class="header-actions">
+      <div class="privacy-badge" id="privacy-badge" tabindex="0" role="button"
+           aria-describedby="privacy-pop" aria-expanded="false">
+        <span class="pulse-dot" aria-hidden="true"></span>
+        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+        <span>100% local processing</span>
+      </div>
+      <div class="privacy-pop" id="privacy-pop" role="tooltip" hidden>
+        <h4>Your files never leave this device</h4>
+        <p>Decoding, trimming, filtering and GIF/ZIP encoding all run inside your browser using Web Workers and the Canvas API. Nothing is uploaded — there is no server and no account.</p>
+        <p class="privacy-note">The only network requests this page makes are to a public CDN for the open-source libraries it runs on (gif.js, omggif, JSZip). Those requests contain none of your media.</p>
+      </div>
+      <button type="button" class="icon-toggle" id="sound-btn" aria-label="Mute interface sounds" aria-pressed="true" title="Interface sounds (M)">
+        <svg class="i-wave" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 00-2.5-4.03v8.06A4.5 4.5 0 0016.5 12zM14 1.6v2.09a8.5 8.5 0 010 16.62v2.09A10.5 10.5 0 0014 1.6z"/></svg>
+        <svg class="i-muted" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm18.6 2.1l-1.4-1.4-2.1 2.1-2.1-2.1-1.4 1.4 2.1 2.1-2.1 2.1 1.4 1.4 2.1-2.1 2.1 2.1 1.4-1.4-2.1-2.1 2.1-2.1z"/></svg>
+      </button>
+      <button type="button" class="icon-toggle" id="theme-btn" aria-label="Switch to light theme" title="Theme (T)">
+        <svg class="i-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12.6 3.1a9 9 0 108.3 12.3A7.5 7.5 0 0112.6 3.1z"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 6.8a5.2 5.2 0 100 10.4 5.2 5.2 0 000-10.4zM11 1h2v3h-2V1zm0 19h2v3h-2v-3zM1 11h3v2H1v-2zm19 0h3v2h-3v-2zM4.2 5.6l1.4-1.4 2.1 2.1-1.4 1.4L4.2 5.6zm12.1 12.1l1.4-1.4 2.1 2.1-1.4 1.4-2.1-2.1zM18.3 5.6l-2.1 2.1-1.4-1.4 2.1-2.1 1.4 1.4zM6.3 17.7l-2.1 2.1-1.4-1.4 2.1-2.1 1.4 1.4z"/></svg>
+      </button>
+      <button type="button" class="btn btn-ghost btn-sm icon-btn" id="about-btn" aria-label="About and shortcuts">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap main">
+
+  <nav class="tabs" role="tablist" aria-label="Converter mode">
+    <button class="tab-btn is-active" role="tab" id="tab-gif" aria-controls="panel-gif" aria-selected="true" data-tab="gif">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M4 5a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V7a2 2 0 00-2-2H4zm5 3v8H7v-3H5.5v3h-2V8h2v3H7V8h2zm4.5 0c1.4 0 2.3.8 2.4 2h-1.6c-.1-.4-.4-.6-.9-.6-.6 0-1 .5-1 1.6v2c0 1.1.4 1.6 1 1.6.6 0 .9-.3.9-.8v-.7h-.9v-1.3h2.5V15c0 1.4-1.1 2.2-2.6 2.2-1.8 0-2.9-1.2-2.9-3.2v-2c0-2 1.1-3.2 2.6-3.2zm7.5 0v1.4h-1.6V15c0 .5.2.7.7.7h.9v1.4h-1.5c-1.2 0-1.7-.6-1.7-1.7V9.4H15V8h1.4V6.3l2-.6V8H20v.8h-1z"/></svg>
+      <span>Video to GIF</span>
+    </button>
+    <button class="tab-btn" role="tab" id="tab-frames" aria-controls="panel-frames" aria-selected="false" data-tab="frames">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M3 5h4v2H5v2H3V5zm14 0h4v4h-2V7h-2V5zM3 15h2v2h2v2H3v-4zm16 0h2v4h-4v-2h2v-2zM8 8h8v8H8V8z"/></svg>
+      <span>Extract Frames</span>
+    </button>
+    <span class="tab-glow" aria-hidden="true"></span>
+  </nav>
+
+  <!-- ============ TAB 1 : VIDEO → GIF ============ -->
+  <section class="tab-panel is-active" id="panel-gif" role="tabpanel" aria-labelledby="tab-gif">
+    <div class="workspace">
+
+      <div class="col col-main">
+        <!-- SOURCE CARD is injected here by app.js (shared between tabs) -->
+
+        <article class="card" data-requires="source">
+          <header class="card-head">
+            <h2><span class="step">1</span> Output &amp; quality</h2>
+            <p class="card-sub">Frame rate, dimensions and GIF compression</p>
+          </header>
+          <div class="card-body">
+
+            <div class="field">
+              <div class="field-label">
+                <label for="target-size">Fit to a size budget</label>
+                <output class="callout" id="target-out">off</output>
+              </div>
+              <select id="target-size" class="select">
+                <option value="0" selected>Off — use my settings</option>
+                <option value="2">Tiny · under 2 MB</option>
+                <option value="5">Email &amp; chat · under 5 MB</option>
+                <option value="8">Discord · under 8 MB</option>
+                <option value="15">X / Twitter · under 15 MB</option>
+              </select>
+              <p class="hint" id="target-hint">Pick a budget and frame rate, width and quality are tuned down automatically until the estimate fits.</p>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="field">
+              <div class="field-label">
+                <label for="fps">Frame rate</label>
+                <output class="callout" id="fps-out">12 FPS</output>
+              </div>
+              <input type="range" class="range" id="fps" min="5" max="30" step="1" value="12">
+              <div class="range-scale"><span>5</span><span>30</span></div>
+            </div>
+
+            <div class="field">
+              <div class="field-label">
+                <label for="size-preset">Width preset</label>
+                <output class="callout" id="size-out">480p</output>
+              </div>
+              <div class="chips" id="size-chips" role="radiogroup" aria-label="Width preset">
+                <button type="button" class="chip" role="radio" aria-checked="false" data-width="240">240p</button>
+                <button type="button" class="chip" role="radio" aria-checked="false" data-width="320">320p</button>
+                <button type="button" class="chip is-active" role="radio" aria-checked="true" data-width="480">480p</button>
+                <button type="button" class="chip" role="radio" aria-checked="false" data-width="640">640p</button>
+                <button type="button" class="chip" role="radio" aria-checked="false" data-width="720">720p</button>
+                <button type="button" class="chip" role="radio" aria-checked="false" data-width="0">Custom</button>
+              </div>
+            </div>
+
+            <div class="grid-2">
+              <div class="field">
+                <label class="field-label" for="out-w"><span>Width</span></label>
+                <div class="input-affix">
+                  <input type="number" id="out-w" min="32" max="1920" step="2" value="480">
+                  <span class="affix">px</span>
+                </div>
+              </div>
+              <div class="field">
+                <label class="field-label" for="out-h"><span>Height</span></label>
+                <div class="input-affix">
+                  <input type="number" id="out-h" min="32" max="1920" step="2" value="270">
+                  <span class="affix">px</span>
+                </div>
+              </div>
+            </div>
+
+            <label class="switch-row" for="lock-aspect">
+              <input type="checkbox" id="lock-aspect" checked>
+              <span class="switch" aria-hidden="true"></span>
+              <span class="switch-text">Maintain aspect ratio</span>
+            </label>
+
+            <div class="divider"></div>
+
+            <div class="field">
+              <div class="field-label">
+                <label for="quality">Quality</label>
+                <output class="callout" id="quality-out">72 · good</output>
+              </div>
+              <input type="range" class="range" id="quality" min="1" max="100" step="1" value="72">
+              <p class="hint">Higher quality uses a finer colour palette — slower to encode, larger file.</p>
+            </div>
+
+            <div class="field">
+              <div class="field-label"><label for="dither">Dithering</label></div>
+              <select id="dither" class="select">
+                <option value="none" selected>None — cleanest, smallest file</option>
+                <option value="FloydSteinberg">Floyd–Steinberg — smooth gradients</option>
+                <option value="FloydSteinberg-serpentine">Floyd–Steinberg (serpentine)</option>
+                <option value="Atkinson">Atkinson — classic Mac look</option>
+              </select>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="field">
+              <div class="field-label">
+                <label for="speed">Playback speed</label>
+                <output class="callout" id="speed-out">1.00×</output>
+              </div>
+              <input type="range" class="range" id="speed" min="0.25" max="2" step="0.05" value="1">
+              <div class="range-scale"><span>0.25× slow</span><span>2× fast</span></div>
+            </div>
+
+            <div class="field">
+              <div class="field-label"><label>Direction</label><output class="callout" id="loop-mode-out">Forward</output></div>
+              <div class="segmented wide" id="loop-mode" role="radiogroup" aria-label="Loop direction">
+                <button type="button" class="seg is-active" role="radio" aria-checked="true" data-loop="forward">Forward</button>
+                <button type="button" class="seg" role="radio" aria-checked="false" data-loop="reverse">Reverse</button>
+                <button type="button" class="seg" role="radio" aria-checked="false" data-loop="boomerang">Boomerang</button>
+              </div>
+              <p class="hint">Reverse plays the clip backwards; Boomerang plays it forwards then backwards for a seamless loop.</p>
+            </div>
+
+            <div class="field">
+              <label class="switch-row" for="loop-forever">
+                <input type="checkbox" id="loop-forever" checked>
+                <span class="switch" aria-hidden="true"></span>
+                <span class="switch-text">Loop forever</span>
+              </label>
+            </div>
+          </div>
+        </article>
+
+        <article class="card" data-requires="source">
+          <header class="card-head">
+            <h2><span class="step">2</span> Image adjustments</h2>
+            <p class="card-sub">Applied to every frame before encoding</p>
+          </header>
+          <div class="card-body">
+            <div class="field">
+              <div class="field-label"><label for="brightness">Brightness</label><output class="callout" id="brightness-out">100%</output></div>
+              <input type="range" class="range" id="brightness" min="20" max="200" step="1" value="100">
+            </div>
+            <div class="field">
+              <div class="field-label"><label for="contrast">Contrast</label><output class="callout" id="contrast-out">100%</output></div>
+              <input type="range" class="range" id="contrast" min="20" max="200" step="1" value="100">
+            </div>
+            <div class="field">
+              <div class="field-label"><label for="saturation">Saturation</label><output class="callout" id="saturation-out">100%</output></div>
+              <input type="range" class="range" id="saturation" min="0" max="250" step="1" value="100">
+            </div>
+            <div class="field">
+              <div class="field-label"><label>Rotation</label><output class="callout" id="rotation-out">0°</output></div>
+              <div class="segmented" id="rotation-seg" role="radiogroup" aria-label="Rotation">
+                <button type="button" class="seg is-active" role="radio" aria-checked="true" data-rot="0">0°</button>
+                <button type="button" class="seg" role="radio" aria-checked="false" data-rot="90">90°</button>
+                <button type="button" class="seg" role="radio" aria-checked="false" data-rot="180">180°</button>
+                <button type="button" class="seg" role="radio" aria-checked="false" data-rot="270">270°</button>
+              </div>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" id="reset-adjust">Reset adjustments</button>
+          </div>
+        </article>
+
+        <article class="card" data-requires="source">
+          <header class="card-head">
+            <h2><span class="step">3</span> Text overlay / watermark</h2>
+            <p class="card-sub">Captions and memes burned into every frame</p>
+          </header>
+          <div class="card-body">
+            <label class="switch-row" for="ov-enable">
+              <input type="checkbox" id="ov-enable">
+              <span class="switch" aria-hidden="true"></span>
+              <span class="switch-text">Enable text overlay</span>
+            </label>
+
+            <div class="overlay-body" id="overlay-body" aria-hidden="true">
+              <div class="field">
+                <label class="field-label" for="ov-text"><span>Text</span></label>
+                <textarea id="ov-text" class="textarea" rows="2" maxlength="200" placeholder="when the code finally works"></textarea>
+              </div>
+
+              <div class="grid-2">
+                <div class="field">
+                  <label class="field-label" for="ov-font"><span>Font</span></label>
+                  <select id="ov-font" class="select">
+                    <option value="Inter, system-ui, sans-serif">Inter (sans)</option>
+                    <option value="'Space Grotesk', sans-serif">Space Grotesk</option>
+                    <option value="Impact, 'Arial Black', sans-serif" selected>Impact (meme)</option>
+                    <option value="Georgia, serif">Georgia (serif)</option>
+                    <option value="'Courier New', monospace">Courier (mono)</option>
+                    <option value="'Comic Sans MS', cursive">Comic Sans</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <div class="field-label"><label for="ov-size">Size</label><output class="callout" id="ov-size-out">8%</output></div>
+                  <input type="range" class="range" id="ov-size" min="2" max="25" step="0.5" value="8">
+                </div>
+              </div>
+
+              <div class="grid-3">
+                <div class="field">
+                  <label class="field-label" for="ov-color"><span>Fill</span></label>
+                  <input type="color" id="ov-color" class="color" value="#ffffff">
+                </div>
+                <div class="field">
+                  <label class="field-label" for="ov-stroke-color"><span>Outline</span></label>
+                  <input type="color" id="ov-stroke-color" class="color" value="#000000">
+                </div>
+                <div class="field">
+                  <div class="field-label"><label for="ov-stroke-w">Outline width</label><output class="callout" id="ov-stroke-out">8%</output></div>
+                  <input type="range" class="range" id="ov-stroke-w" min="0" max="20" step="1" value="8">
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-label"><label>Position</label><output class="callout" id="ov-pos-out">Bottom centre</output></div>
+                <div class="pos-grid" id="ov-pos" role="radiogroup" aria-label="Overlay position">
+                  <button type="button" class="pos" role="radio" aria-checked="false" data-pos="tl" aria-label="Top left"></button>
+                  <button type="button" class="pos" role="radio" aria-checked="false" data-pos="tc" aria-label="Top centre"></button>
+                  <button type="button" class="pos" role="radio" aria-checked="false" data-pos="tr" aria-label="Top right"></button>
+                  <button type="button" class="pos" role="radio" aria-checked="false" data-pos="ml" aria-label="Middle left"></button>
+                  <button type="button" class="pos" role="radio" aria-checked="false" data-pos="mc" aria-label="Middle centre"></button>
+                  <button type="button" class="pos" role="radio" aria-checked="false" data-pos="mr" aria-label="Middle right"></button>
+                  <button type="button" class="pos" role="radio" aria-checked="false" data-pos="bl" aria-label="Bottom left"></button>
+                  <button type="button" class="pos is-active" role="radio" aria-checked="true" data-pos="bc" aria-label="Bottom centre"></button>
+                  <button type="button" class="pos" role="radio" aria-checked="false" data-pos="br" aria-label="Bottom right"></button>
+                </div>
+              </div>
+
+              <div class="grid-2">
+                <div class="field">
+                  <div class="field-label"><label for="ov-x">Nudge X</label><output class="callout" id="ov-x-out">0%</output></div>
+                  <input type="range" class="range" id="ov-x" min="-45" max="45" step="1" value="0">
+                </div>
+                <div class="field">
+                  <div class="field-label"><label for="ov-y">Nudge Y</label><output class="callout" id="ov-y-out">0%</output></div>
+                  <input type="range" class="range" id="ov-y" min="-45" max="45" step="1" value="0">
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-label"><label for="ov-opacity">Opacity</label><output class="callout" id="ov-opacity-out">100%</output></div>
+                <input type="range" class="range" id="ov-opacity" min="10" max="100" step="1" value="100">
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="col col-side">
+        <article class="card sticky-card" data-requires="source">
+          <header class="card-head">
+            <h2>Result</h2>
+            <p class="card-sub" id="estimate">Load a video to estimate output size</p>
+          </header>
+          <div class="card-body">
+            <div class="result-stage" id="result-stage">
+              <div class="result-empty" id="result-empty">
+                <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path fill="currentColor" d="M4 5a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V7a2 2 0 00-2-2H4zm6 3.5l6 3.5-6 3.5v-7z"/></svg>
+                <p>Your animated GIF preview will appear here</p>
+              </div>
+              <img id="result-img" alt="Encoded GIF preview" hidden>
+            </div>
+
+            <div class="progress-block" id="progress-block" hidden>
+              <div class="progress-head">
+                <span id="progress-label">Preparing…</span>
+                <span id="progress-pct">0%</span>
+              </div>
+              <div class="progress-track"><div class="progress-bar" id="progress-bar" style="width:0%"></div></div>
+            </div>
+
+            <div class="btn-row">
+              <button type="button" class="btn btn-primary btn-block" id="encode-btn" disabled>
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 100 20 10 10 0 000-20zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+                <span>Generate GIF</span>
+              </button>
+              <button type="button" class="btn btn-danger" id="cancel-btn" hidden>Cancel</button>
+            </div>
+
+            <div class="btn-row" id="result-actions" hidden>
+              <button type="button" class="btn btn-success btn-block dl-btn" id="download-btn">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zm7-18l-6 7h4v6h4V9h4l-6-7z"/></svg>
+                <span>Download GIF</span>
+              </button>
+              <button type="button" class="btn btn-ghost icon-only" id="copy-btn" title="Copy GIF to clipboard" aria-label="Copy GIF to clipboard">
+                <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z"/></svg>
+              </button>
+            </div>
+            <p class="result-meta" id="result-meta"></p>
+
+            <div class="divider"></div>
+            <button type="button" class="btn btn-outline btn-block" id="batch-btn" disabled>
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z"/></svg>
+              <span>Batch export all queued files</span>
+            </button>
+            <p class="hint" id="batch-hint">Queue more than one file to convert them all into a single ZIP. Batch export always uses each file's full length — trimming applies to the single-file preview and download only.</p>
+          </div>
+        </article>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ TAB 2 : EXTRACT FRAMES ============ -->
+  <section class="tab-panel" id="panel-frames" role="tabpanel" aria-labelledby="tab-frames" hidden>
+    <div class="workspace">
+
+      <div class="col col-main">
+        <!-- SOURCE CARD is injected here by app.js -->
+
+        <article class="card" data-requires="source">
+          <header class="card-head">
+            <h2>Extraction settings</h2>
+            <p class="card-sub">How often to grab a frame, and in which format</p>
+          </header>
+          <div class="card-body">
+            <div class="field">
+              <div class="field-label"><label for="extract-mode">Sampling</label><output class="callout" id="extract-mode-out">every frame</output></div>
+              <div class="segmented wide" id="extract-mode" role="radiogroup" aria-label="Sampling mode">
+                <button type="button" class="seg is-active" role="radio" aria-checked="true" data-mode="every">Every frame</button>
+                <button type="button" class="seg" role="radio" aria-checked="false" data-mode="nth">Every Nth</button>
+                <button type="button" class="seg" role="radio" aria-checked="false" data-mode="fps">Frames / sec</button>
+                <button type="button" class="seg" role="radio" aria-checked="false" data-mode="count">Exact count</button>
+              </div>
+            </div>
+
+            <div class="field" id="extract-value-field" hidden>
+              <div class="field-label"><label for="extract-value" id="extract-value-label">Every N frames</label><output class="callout" id="extract-value-out">5</output></div>
+              <input type="range" class="range" id="extract-value" min="2" max="60" step="1" value="5">
+            </div>
+
+            <div class="grid-2">
+              <div class="field">
+                <div class="field-label"><label for="frame-format">Format</label></div>
+                <select id="frame-format" class="select">
+                  <option value="image/png" selected>PNG — lossless</option>
+                  <option value="image/jpeg">JPEG — smaller</option>
+                </select>
+              </div>
+              <div class="field" id="jpeg-quality-field" hidden>
+                <div class="field-label"><label for="jpeg-quality">JPEG quality</label><output class="callout" id="jpeg-quality-out">92%</output></div>
+                <input type="range" class="range" id="jpeg-quality" min="40" max="100" step="1" value="92">
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="switch-row" for="frames-use-adjust">
+                <input type="checkbox" id="frames-use-adjust">
+                <span class="switch" aria-hidden="true"></span>
+                <span class="switch-text">Apply brightness / contrast / saturation &amp; rotation from the GIF tab</span>
+              </label>
+            </div>
+
+            <div class="estimate-strip" id="extract-estimate">
+              <span class="est-dot" aria-hidden="true"></span>
+              <span id="extract-estimate-text">Load a video or GIF to see how many frames will be extracted.</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="card results-card" data-requires="source">
+          <header class="card-head head-row">
+            <div>
+              <h2>Frames</h2>
+              <p class="card-sub"><span id="sel-count">0</span> of <span id="total-count">0</span> selected</p>
+            </div>
+            <div class="mini-actions">
+              <button type="button" class="btn btn-ghost btn-sm" id="select-all" disabled>All</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="select-none" disabled>None</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="select-invert" disabled>Invert</button>
+            </div>
+          </header>
+          <div class="card-body">
+            <div class="frame-grid" id="frame-grid">
+              <div class="frame-empty" id="frame-empty">
+                <svg viewBox="0 0 24 24" width="32" height="32" aria-hidden="true"><path fill="currentColor" d="M3 5h4v2H5v2H3V5zm14 0h4v4h-2V7h-2V5zM3 15h2v2h2v2H3v-4zm16 0h2v4h-4v-2h2v-2zM8 8h8v8H8V8z"/></svg>
+                <p>Extracted frames will be listed here. Tick the ones you want to keep.</p>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="col col-side">
+        <article class="card sticky-card" data-requires="source">
+          <header class="card-head">
+            <h2>Export</h2>
+            <p class="card-sub">Selected frames packaged as a ZIP</p>
+          </header>
+          <div class="card-body">
+            <div class="progress-block" id="frame-progress-block" hidden>
+              <div class="progress-head">
+                <span id="frame-progress-label">Preparing…</span>
+                <span id="frame-progress-pct">0%</span>
+              </div>
+              <div class="progress-track"><div class="progress-bar" id="frame-progress-bar" style="width:0%"></div></div>
+            </div>
+
+            <div class="btn-row">
+              <button type="button" class="btn btn-primary btn-block" id="extract-btn" disabled>
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M4 4h7V2H4a2 2 0 00-2 2v7h2V4zm16-2h-7v2h7v7h2V4a2 2 0 00-2-2zM2 13v7a2 2 0 002 2h7v-2H4v-7H2zm20 0v7h-7v2h7a2 2 0 002-2v-7h-2zM12 8.5A3.5 3.5 0 1015.5 12 3.5 3.5 0 0012 8.5z"/></svg>
+                <span>Extract frames</span>
+              </button>
+              <button type="button" class="btn btn-danger" id="frame-cancel-btn" hidden>Cancel</button>
+            </div>
+
+            <button type="button" class="btn btn-success btn-block dl-btn" id="zip-btn" disabled>
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zm7-18l-6 7h4v6h4V9h4l-6-7z"/></svg>
+              <span>Download ZIP</span>
+            </button>
+            <p class="result-meta" id="zip-meta"></p>
+
+            <div class="divider"></div>
+            <button type="button" class="btn btn-outline btn-block" id="frame-batch-btn" disabled>
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z"/></svg>
+              <span>Batch extract all queued files</span>
+            </button>
+            <p class="hint">Every queued file is extracted with these settings and zipped together.</p>
+          </div>
+        </article>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ SHARED SOURCE CARD (moved into the active tab) ============ -->
+<template id="source-card-template">
+  <article class="card source-card" id="source-card">
+    <header class="card-head head-row">
+      <div>
+        <h2>Source</h2>
+        <p class="card-sub" id="source-sub">Drop a video to begin</p>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="clear-source" hidden>Remove</button>
+    </header>
+    <div class="card-body">
+
+      <div class="dropzone" id="dropzone" tabindex="0" role="button"
+           aria-label="Upload media: drag and drop, click to browse, or paste from clipboard">
+        <input type="file" id="file-input" accept="video/*,.gif,image/gif" multiple hidden>
+        <div class="dz-inner">
+          <span class="dz-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="30" height="30"><path fill="currentColor" d="M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+          </span>
+          <p class="dz-title" id="dz-title">Drag &amp; drop your media</p>
+          <p class="dz-sub" id="dz-sub">MP4 · WebM · MOV · GIF &nbsp;—&nbsp; or <span class="link">browse files</span> / <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste</p>
+        </div>
+      </div>
+
+      <div class="queue" id="queue" hidden>
+        <div class="queue-head">
+          <span>Queue <b id="queue-count">0</b></span>
+          <button type="button" class="btn btn-ghost btn-xs" id="queue-clear">Clear all</button>
+        </div>
+        <ul class="queue-list" id="queue-list"></ul>
+      </div>
+
+      <div class="source-body" id="source-body" hidden>
+        <div class="preview-stage">
+          <canvas id="preview-canvas" class="preview-canvas" aria-label="Live filtered preview"></canvas>
+          <div class="preview-controls">
+            <button type="button" class="pv-btn" id="play-btn" aria-label="Play preview">
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+            </button>
+            <button type="button" class="pv-btn" id="loop-btn" aria-label="Loop preview" aria-pressed="true">
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+            </button>
+            <span class="pv-time"><span id="pv-current">0.00s</span> / <span id="pv-duration">0.00s</span></span>
+            <span class="pv-badge" id="pv-badge"></span>
+          </div>
+        </div>
+
+        <div class="file-meta" id="file-meta"></div>
+
+        <!-- TIMELINE TRIMMER -->
+        <div class="timeline-block">
+          <div class="timeline" id="timeline">
+            <canvas class="tl-thumbs" id="tl-thumbs" aria-hidden="true"></canvas>
+            <div class="tl-range" id="tl-range"></div>
+            <div class="tl-playhead" id="tl-playhead" role="presentation"></div>
+            <button type="button" class="tl-handle tl-handle-start" id="tl-start"
+                    aria-label="Trim start handle" aria-valuetext="0 seconds"></button>
+            <button type="button" class="tl-handle tl-handle-end" id="tl-end"
+                    aria-label="Trim end handle" aria-valuetext="0 seconds"></button>
+          </div>
+          <div class="timeline-readout">
+            <label class="tl-field"><span>Start</span><input type="number" id="t-start" min="0" step="0.01" value="0"></label>
+            <label class="tl-field"><span>End</span><input type="number" id="t-end" min="0" step="0.01" value="0"></label>
+            <label class="tl-field"><span>Length</span><input type="text" id="t-len" readonly value="0.00s"></label>
+            <button type="button" class="btn btn-ghost btn-xs" id="reset-range">Full clip</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </article>
+</template>
+
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+<div class="lightbox" id="lightbox" hidden>
+  <button type="button" class="lb-close" id="lb-close" aria-label="Close preview (Esc)">&times;</button>
+  <button type="button" class="lb-nav lb-prev" id="lb-prev" aria-label="Previous frame">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M15.4 7.4L14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg>
+  </button>
+  <button type="button" class="lb-nav lb-next" id="lb-next" aria-label="Next frame">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M8.6 16.6L10 18l6-6-6-6-1.4 1.4L13.2 12z"/></svg>
+  </button>
+  <img id="lb-img" alt="Enlarged frame preview">
+  <p class="lb-caption" id="lb-caption"></p>
+</div>
+
+<dialog class="modal" id="about-modal">
+  <div class="modal-body">
+    <h3>About GIF Forge</h3>
+    <p>Everything runs on your machine. Video frames are decoded with the HTML5 <code>&lt;video&gt;</code> and Canvas APIs, GIFs are decoded with <code>omggif</code>, encoded with <code>gif.js</code> in Web Workers, and zipped with <code>JSZip</code>.</p>
+    <h4>Tips</h4>
+    <ul>
+      <li>Shorter clips at 480p keep GIF files small — 720p+ GIFs get huge fast.</li>
+      <li>Dithering helps gradients but increases file size by roughly a third.</li>
+      <li>Use the timeline handles to trim, then press <kbd>Space</kbd> to preview the loop.</li>
+      <li><b>Fit to a size budget</b> walks frame rate, width and quality down until the estimate fits your platform's limit.</li>
+      <li>Frame extraction converts each frame to a Blob, so hundreds of frames stay light on memory. <kbd>Shift</kbd>+click selects a whole range of frames.</li>
+    </ul>
+    <h4>Keyboard shortcuts</h4>
+    <ul class="shortcut-list">
+      <li><span>Video to GIF tab</span><kbd>1</kbd></li>
+      <li><span>Extract Frames tab</span><kbd>2</kbd></li>
+      <li><span>Play / pause preview</span><kbd>Space</kbd></li>
+      <li><span>Generate / extract</span><kbd>E</kbd></li>
+      <li><span>Download result</span><kbd>D</kbd></li>
+      <li><span>Copy GIF</span><kbd>C</kbd></li>
+      <li><span>Light or dark theme</span><kbd>T</kbd></li>
+      <li><span>Mute sounds</span><kbd>M</kbd></li>
+      <li><span>Previous / next frame</span><span><kbd>←</kbd> <kbd>→</kbd></span></li>
+      <li><span>This dialog</span><kbd>?</kbd></li>
+      <li><span>Close overlays</span><kbd>Esc</kbd></li>
+    </ul>
+    <h4>Supported input</h4>
+    <p>Any video your browser can play (MP4/H.264, WebM, MOV) plus animated GIF files.</p>
+    <form method="dialog"><button type="submit" class="btn btn-primary btn-block">Got it</button></form>
+  </div>
+</div>
+
+<footer class="app-footer">
+  <div class="wrap footer-inner">
+    <p>Built with HTML, CSS &amp; vanilla JavaScript · gif.js · omggif · JSZip · FileSaver</p>
+    <p class="footer-lock">No uploads. No accounts. No tracking.</p>
+  </div>
+</footer>
+
+<script src="js/util.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/media.js"></script>
+<script src="js/render.js"></script>
+<script src="js/pipeline.js"></script>
+<script src="js/timeline.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
